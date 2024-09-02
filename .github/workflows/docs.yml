@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [main]
 
+permissions: write-all
+
 env:
   ZIG_VERSION: 0.14.0-dev.909+f9f894200
 
@@ -45,7 +47,8 @@ jobs:
       - name: Build Docs
         run: zig build docs
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy
+        if: ${{ github.ref == 'refs/heads/main' }} && steps.check_changes.outcome == 'success'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

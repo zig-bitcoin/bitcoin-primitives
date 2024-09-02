@@ -42,8 +42,5 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-zig-build-
 
-      - name: Build and Run
-        run: zig build run -- info
-
       - name: Unit testing
         run: zig build test --summary all
