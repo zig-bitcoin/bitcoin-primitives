@@ -1,15 +1,15 @@
 const std = @import("std");
 const expectEqualSlices = std.testing.expectEqualSlices;
-const alphabet = @import("./alphabet.zig").Alphabet;
+const Alphabet = @import("alphabet.zig").Alphabet;
 
 /// `Base58Encoder` is a structure for encoding byte slices into Base58 format.
-pub const Base58Encoder = struct {
+pub const Encoder = struct {
     const Self = @This();
 
     /// Contains the Base58 alphabet used for encoding.
     ///
     /// This should be initialized with a valid Base58 character set.
-    alpha: alphabet = .{},
+    alpha: Alphabet = Alphabet.init(.{}) catch unreachable,
 
     /// Encodes a byte slice into Base58 format.
     ///
@@ -25,7 +25,7 @@ pub const Base58Encoder = struct {
     /// stores the result in the `dest` slice.
     ///
     /// For further information on the Base58 encoding algorithm, see: https://datatracker.ietf.org/doc/html/draft-msporny-base58-03
-    pub fn encode(self: *const Self, source: []const u8, dest: []u8) void {
+    pub fn encode(self: *const Self, source: []const u8, dest: []u8) usize {
         // Index in the destination slice where the next Base58 character will be written.
         var index: usize = 0;
         // Count of leading zeros in the input data.
@@ -82,11 +82,43 @@ pub const Base58Encoder = struct {
 
         // Reverse the `dest` slice to produce the final encoded result.
         std.mem.reverse(u8, dest[0..dest_index]);
+        return dest_index;
+    }
+
+    /// Pass an `allocator` & `source` bytes buffer. `encodeAlloc` will allocate a buffer
+    /// to write into. It may also realloc as needed. Returned value is base58 encoded string.
+    pub fn encodeAlloc(self: *const Self, allocator: std.mem.Allocator, source: []const u8) ![]u8 {
+        var dest = try allocator.alloc(u8, source.len * 2);
+
+        const size = self.encode(source, dest);
+        if (dest.len != size) {
+            dest = try allocator.realloc(dest, size);
+        }
+
+        return dest;
+    }
+
+    pub fn encodeCheckAlloc(encoder: *const Encoder, allocator: std.mem.Allocator, data: []const u8) ![]u8 {
+        var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+        hasher.update(data);
+        var checksum = hasher.finalResult();
+
+        hasher = std.crypto.hash.sha2.Sha256.init(.{});
+        hasher.update(&checksum);
+        checksum = hasher.finalResult();
+
+        var encoding_data = try allocator.alloc(u8, data.len + 4);
+        defer allocator.free(encoding_data);
+
+        @memcpy(encoding_data[0..data.len], data);
+        @memcpy(encoding_data[data.len..], checksum[0..4]);
+
+        return try encoder.encodeAlloc(allocator, encoding_data);
     }
 };
 
 test "Base58Encoder: verify encoding" {
-    const encoder: Base58Encoder = .{};
+    const encoder: Encoder = .{};
 
     var buf1: [0]u8 = undefined;
     _ = encoder.encode(&[_]u8{}, &buf1);

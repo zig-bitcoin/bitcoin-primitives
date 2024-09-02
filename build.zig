@@ -15,6 +15,11 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
+    const secp256k1 = b.dependency("secp256k1", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const lib = b.addStaticLibrary(.{
         .name = "bitcoin-zig",
         // In this case the main source file is merely a path, however, in more
@@ -23,6 +28,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    lib.root_module.linkLibrary(secp256k1.artifact("libsecp"));
+    lib.root_module.addImport("secp256k1", secp256k1.module("secp256k1"));
 
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
@@ -30,11 +37,12 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(lib);
 
     // expose library as module
-    _ = b.addModule("bitcoin", .{
+    const module = b.addModule("bitcoin", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
+    module.linkLibrary(secp256k1.artifact("libsecp"));
 
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
@@ -43,6 +51,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    lib_unit_tests.root_module.addImport("secp256k1", secp256k1.module("secp256k1"));
+    lib_unit_tests.root_module.linkLibrary(secp256k1.artifact("libsecp"));
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 

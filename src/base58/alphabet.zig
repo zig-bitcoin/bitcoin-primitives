@@ -1,21 +1,123 @@
 const std = @import("std");
 const expectEqualSlices = std.testing.expectEqualSlices;
+pub const BITCOIN_ALPHABET: [58]u8 = [58]u8{
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'J',
+    'K',
+    'L',
+    'M',
+    'N',
+    'P',
+    'Q',
+    'R',
+    'S',
+    'T',
+    'U',
+    'V',
+    'W',
+    'X',
+    'Y',
+    'Z',
+    'a',
+    'b',
+    'c',
+    'd',
+    'e',
+    'f',
+    'g',
+    'h',
+    'i',
+    'j',
+    'k',
+    'm',
+    'n',
+    'o',
+    'p',
+    'q',
+    'r',
+    's',
+    't',
+    'u',
+    'v',
+    'w',
+    'x',
+    'y',
+    'z',
+};
 
 pub const Alphabet = struct {
+    encode: [58]u8,
+    decode: [128]u8,
+
+    const Options = struct { alphabet: [58]u8 = BITCOIN_ALPHABET };
+
     const Self = @This();
 
-    /// Alphabet for base58 encoding and decoding.
-    ///
-    /// Bitcoin alphabet is used by default.
-    ///
-    /// Bitcoin's alphabet as defined in their Base58Check encoding.
-    ///
-    /// See <https://en.bitcoin.it/wiki/Base58Check_encoding#Base58_symbol_chart>
-    encode: [58]u8 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".*,
+    pub const DEFAULT = Self.init(.{}) catch unreachable;
 
-    /// Initialize the alphabet to Bitcoin's alphabet.
-    pub fn initBitcoin() Self {
-        return .{};
+    /// Initialize an Alpabet set with options
+    pub fn init(options: Options) !Self {
+        const base: [58]u8 = options.alphabet;
+
+        var encode = [58]u8{
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+
+        var decode = [128]u8{
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        };
+
+        var i: u8 = 0;
+        while (i < base.len) {
+            if (base[i] >= 128) {
+                return error.NonAsciiChar;
+            }
+            if (decode[base[i]] != 0xFF) {
+                return error.DuplicateCharacter;
+            }
+
+            encode[i] = base[i];
+            decode[base[i]] = i;
+            i += 1;
+        }
+
+        return Self{
+            .encode = encode,
+            .decode = decode,
+        };
     }
 };
 
@@ -23,6 +125,6 @@ test "Alphabet: verify Bitcoin alphabet" {
     try expectEqualSlices(
         u8,
         &"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".*,
-        &Alphabet.initBitcoin().encode,
+        &(try Alphabet.init(.{})).encode,
     );
 }
