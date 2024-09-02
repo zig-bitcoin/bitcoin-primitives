@@ -3,6 +3,7 @@
 
 # Zig-specific build artifacts
 zig-cache/
+.zig-cache/
 zig-out/
 /release/
 /debug/
