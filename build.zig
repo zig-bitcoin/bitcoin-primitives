@@ -43,6 +43,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     module.linkLibrary(secp256k1.artifact("libsecp"));
+    module.addImport("secp256k1", secp256k1.module("secp256k1"));
 
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
