@@ -26,6 +26,8 @@ pub const Decoder = struct {
 
     /// Pass a `encoded` and a `dest` to write decoded value into. `decode` returns a
     /// `usize` indicating how many bytes were written. Sizing/resizing, `dest` buffer is up to the caller.
+    ///
+    /// For further information on the Base58 decoding algorithm, see: https://datatracker.ietf.org/doc/html/draft-msporny-base58-03
     pub fn decode(self: *const Self, encoded: []const u8, dest: []u8) !usize {
         var index: usize = 0;
         const zero = self.alpha.encode[0];
@@ -44,7 +46,7 @@ pub const Decoder = struct {
             while (x < index) : (x += 1) {
                 const byte = &dest[x];
                 val += @as(usize, @intCast(byte.*)) * 58;
-                byte.* = @as(u8, @intCast(val & 0xFF));
+                byte.* = @intCast(val & 0xFF);
                 val >>= 8;
             }
 
@@ -53,21 +55,17 @@ pub const Decoder = struct {
                     return error.BufferTooSmall;
                 }
 
-                const byte = &dest[index];
-                byte.* = @as(u8, @intCast(val)) & 0xFF;
+                dest[index] = @as(u8, @intCast(val)) & 0xFF;
                 index += 1;
                 val >>= 8;
             }
         }
 
-        for (encoded) |*c| {
-            if (c.* == zero) {
-                const byte = &dest[index];
-                byte.* = 0;
-                index += 1;
-            } else {
-                break;
-            }
+        for (encoded) |c| {
+            if (c != zero) break;
+
+            dest[index] = 0;
+            index += 1;
         }
 
         std.mem.reverse(u8, dest[0..index]);
@@ -94,11 +92,8 @@ pub const Decoder = struct {
         hasher = std.crypto.hash.sha2.Sha256.init(.{});
         hasher.update(&fr);
 
-        const hash_check = hasher.finalResult()[0..4].*;
-        const data_check = decoded[check_start..][0..4].*;
-
-        const expected = std.mem.readInt(u32, &hash_check, .little);
-        const actual = std.mem.readInt(u32, &data_check, .little);
+        const expected = std.mem.readInt(u32, hasher.finalResult()[0..4], .little);
+        const actual = std.mem.readInt(u32, decoded[check_start..][0..4], .little);
 
         if (expected != actual) return error.IncorrectChecksum;
 

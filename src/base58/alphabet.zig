@@ -114,7 +114,7 @@ pub const Alphabet = struct {
             i += 1;
         }
 
-        return Self{
+        return .{
             .encode = encode,
             .decode = decode,
         };
