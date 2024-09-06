@@ -50,7 +50,6 @@ pub fn build(b: *std.Build) void {
     const lib_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
-        .optimize = optimize,
     });
     lib_unit_tests.root_module.addImport("secp256k1", secp256k1.module("secp256k1"));
     lib_unit_tests.root_module.linkLibrary(secp256k1.artifact("libsecp"));
