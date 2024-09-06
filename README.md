@@ -20,5 +20,5 @@ const bitcoin_primitives = b.dependency("bitcoin-primitives", .{
     .optimize = optimize,
 });
 
-exe.root_module.addImport("bitcoin", bitcoin_primitives.module("bitcoin"));
+exe.root_module.addImport("bitcoin-primitives", bitcoin_primitives.module("bitcoin-primitives"));
 ```
