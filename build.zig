@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const lib = b.addStaticLibrary(.{
-        .name = "bitcoin-zig",
+        .name = "bitcoin-primitives",
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
         .root_source_file = b.path("src/root.zig"),
@@ -37,7 +37,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(lib);
 
     // expose library as module
-    const module = b.addModule("bitcoin", .{
+    const module = b.addModule("bitcoin-primitives", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
