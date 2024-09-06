@@ -37,7 +37,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(lib);
 
     // expose library as module
-    const module = b.addModule("bitcoin", .{
+    const module = b.addModule("bitcoin-primitives", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
