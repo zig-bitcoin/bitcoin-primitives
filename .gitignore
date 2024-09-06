@@ -10,3 +10,5 @@ zig-out/
 /build/
 /build-*/
 /docgen_tmp/
+
+build.zig.zon
