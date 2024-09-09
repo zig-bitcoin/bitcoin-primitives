@@ -26,8 +26,35 @@ pub inline fn value(self: Self) u64 {
     return self.inner;
 }
 
+pub fn hint_encoded_len(self: Self) usize {
+    const v = self.value();
+
+    return if (v <= 252)
+        1
+    else if (v <= 0xffff)
+        3
+    else if (v <= 0xffffffff)
+        5
+    else
+        9;
+}
+
 /// Encodes the inner value
+///
+/// The caller is responsible for freeing the returned memory.
 pub fn encode(self: Self, allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
+    const encoded_len = self.hint_encoded_len();
+    const res = try allocator.alloc(u8, encoded_len);
+
+    self.encode_to(res);
+
+    return res;
+}
+
+/// Encodes the inner value into a destination
+///
+/// dest.len must be >= self.hint_encoded_len().
+pub fn encode_to(self: Self, dest: []u8) void {
     const small_endian_value: [8]u8 = @bitCast(self.value());
     switch (native_endian) {
         .little => {},
@@ -38,24 +65,16 @@ pub fn encode(self: Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!
 
     const v = self.value();
     if (v <= 252) {
-        const res = try allocator.alloc(u8, 1);
-        res[0] = small_endian_value[0];
-        return res;
+        dest[0] = small_endian_value[0];
     } else if (v <= 0xffff) {
-        const res = try allocator.alloc(u8, 3);
-        res[0] = 0xfd;
-        std.mem.copyForwards(u8, res[1..], small_endian_value[0..2]);
-        return res;
+        dest[0] = 0xfd;
+        std.mem.copyForwards(u8, dest[1..], small_endian_value[0..2]);
     } else if (v <= 0xffffffff) {
-        const res = try allocator.alloc(u8, 5);
-        res[0] = 0xfe;
-        std.mem.copyForwards(u8, res[1..], small_endian_value[0..4]);
-        return res;
+        dest[0] = 0xfe;
+        std.mem.copyForwards(u8, dest[1..], small_endian_value[0..4]);
     } else {
-        const res = try allocator.alloc(u8, 9);
-        res[0] = 0xff;
-        std.mem.copyForwards(u8, res[1..], small_endian_value[0..]);
-        return res;
+        dest[0] = 0xff;
+        std.mem.copyForwards(u8, dest[1..], small_endian_value[0..]);
     }
 }
 
@@ -120,16 +139,28 @@ test "ok_full_flow_for_key_values" {
 
 test "ok_full_flow_for_1k_random_values" {
     const rand = std.crypto.random;
+    var buffer = [_]u8{0} ** 9;
 
     for (0..1000) |_| {
         const allocator = std.testing.allocator;
         const num = rand.int(u64);
 
         const compact = Self.new(num);
-        const encoding = try compact.encode(allocator);
-        defer allocator.free(encoding);
-        const decoded = try Self.decode(encoding);
-        try std.testing.expectEqual(decoded.value(), num);
+
+        // encode
+        {
+            const encoding = try compact.encode(allocator);
+            defer allocator.free(encoding);
+            const decoded = try Self.decode(encoding);
+            try std.testing.expectEqual(decoded.value(), num);
+        }
+        // encode_to
+        {
+            const buf = buffer[9 - compact.hint_encoded_len() ..];
+            compact.encode_to(buf);
+            const decoded = try Self.decode(buf);
+            try std.testing.expectEqual(decoded.value(), num);
+        }
     }
 }
 
