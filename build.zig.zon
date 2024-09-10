@@ -24,8 +24,8 @@
     // internet connectivity.
     .dependencies = .{
         .secp256k1 = .{
-            .url = "https://github.com/zig-bitcoin/libsecp256k1-zig/archive/5f70bc5aa2a5ebc69c78a9a75fb83c2d7035bde1.zip",
-            .hash = "12208e2a2f181feabb9fa01db64232e9cdefdf1b8f2919f1dd7f24c2393cad2b947b",
+            .url = "git+https://github.com/zig-bitcoin/libsecp256k1-zig#4036f3a70f161b3b60458737bb15bc856e27d97a",
+            .hash = "122083dda44da69d34f4803d858f599b6022b39b4e5e07d49f77d0f102957595fdba",
         },
     },
     .paths = .{
