@@ -2,6 +2,7 @@ const std = @import("std");
 const expect = std.testing.expect;
 const expectEqualSlices = std.testing.expectEqualSlices;
 const expectError = std.testing.expectError;
+const expectEqualStrings = std.testing.expectEqualStrings;
 
 /// The human readable part of a bech32 address is limited to 83 US-ASCII characters.
 const MAX_HRP_LEN: usize = 83;
@@ -11,6 +12,60 @@ const MIN_ASCII: u8 = 33;
 
 /// The maximum ASCII value for a valid character in the human readable part.
 const MAX_ASCII: u8 = 126;
+
+/// The human-readable part (HRP) for the Bitcoin mainnet.
+///
+/// This corresponds to `bc` prefix.
+///
+/// Example:
+///  - Mainnet P2WPKH: bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4
+const BC: Hrp = .{
+    .buf = [_]u8{
+        98, 99, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0, 0, 0,
+    },
+    .size = 2,
+};
+
+/// The human-readable part (HRP) for Bitcoin testnet networks (testnet and signet).
+///
+/// This corresponds to `tb` prefix.
+///
+/// Example:
+/// - Testnet P2WPKH: tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx
+const TB: Hrp = .{
+    .buf = [_]u8{
+        116, 98, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,   0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,   0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,   0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,   0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,   0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,   0,  0, 0, 0,
+    },
+    .size = 2,
+};
+
+/// The human-readable part (HRP) for the Bitcoin regtest network.
+///
+/// This corresponds to `bcrt` prefix.
+const BCRT: Hrp = .{
+    .buf = [_]u8{
+        98, 99, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0,   0,   0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0,   0,   0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0,   0,   0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0,   0,   0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0,   0,   0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,  0,  0,   0,   0,
+    },
+    .size = 4,
+};
 
 /// Various errors that can occur during HRP processing.
 ///
@@ -146,6 +201,110 @@ pub const Hrp = struct {
         // Return the constructed and validated `Hrp` instance.
         return new;
     }
+
+    /// Converts the human-readable part (HRP) to a lowercase representation.
+    pub fn toLowerCase(self: *const Self, output: []u8) []const u8 {
+        std.debug.assert(output.len >= self.size);
+
+        // Loop through each character of the HRP and convert it to lowercase.
+        for (self.buf[0..self.size], 0..) |b, i| {
+            output[i] = std.ascii.toLower(b);
+        }
+
+        return output[0..self.size];
+    }
+
+    /// Converts the human-readable part (HRP) to bytes.
+    pub fn asBytes(self: *const Self) []const u8 {
+        return self.buf[0..self.size];
+    }
+
+    /// Checks whether two HRPs are equal.
+    pub fn eql(self: *const Self, rhs: *const Self) bool {
+        // If the HRPs have different sizes, they are not equal.
+        if (self.size != rhs.size) return false;
+
+        // Create buffers to store the lowercase versions of the HRPs.
+        var buf_lhs: [MAX_HRP_LEN]u8 = undefined;
+        var buf_rhs: [MAX_HRP_LEN]u8 = undefined;
+
+        // Convert both HRPs to lowercase.
+        const l = self.toLowerCase(&buf_lhs);
+        const r = rhs.toLowerCase(&buf_rhs);
+
+        // Compare each byte of the lowercase HRPs for equality.
+        for (l, r) |a, b|
+            if (a != b) return false;
+
+        return true;
+    }
+
+    /// Checks whether a given Segwit address is valid on either the mainnet or testnet.
+    ///
+    /// A Segwit address must follow the Bech32 encoding format, with the human-readable
+    /// part "bc" for mainnet or "tb" for testnet. This function combines the logic of
+    /// validating an address on both networks.
+    ///
+    /// # Returns
+    /// - `true` if the Segwit address is valid on either the mainnet or testnet.
+    /// - `false` otherwise.
+    ///
+    /// # Segwit Address Requirements:
+    /// - The human-readable part must be "bc" (mainnet) or "tb" (testnet).
+    /// - The witness program must follow the rules outlined in BIP141.
+    pub fn isValidSegwit(self: *const Self) bool {
+        return self.isValidOnMainnet() or self.isValidOnTestnet();
+    }
+
+    /// Checks whether a given Segwit address is valid on the Bitcoin mainnet.
+    ///
+    /// Segwit addresses on the mainnet use the human-readable part "bc". This function
+    /// verifies that the provided address corresponds to the mainnet format.
+    ///
+    /// # Returns
+    /// - `true` if the Segwit address is valid on the mainnet (with the "bc" prefix).
+    /// - `false` otherwise.
+    pub fn isValidOnMainnet(self: *const Self) bool {
+        return self.eql(&BC);
+    }
+
+    /// Checks whether a given Segwit address is valid on the Bitcoin testnet.
+    ///
+    /// Segwit addresses on the testnet use the human-readable part "tb". This function
+    /// verifies that the provided address corresponds to the testnet format.
+    ///
+    /// # Returns
+    /// - `true` if the Segwit address is valid on the testnet (with the "tb" prefix).
+    /// - `false` otherwise.
+    pub fn isValidOnTestnet(self: *const Self) bool {
+        return self.eql(&TB);
+    }
+
+    /// Checks whether a given Segwit address is valid on the Bitcoin signet.
+    ///
+    /// Segwit addresses on signet also use the human-readable part "tb", similar to
+    /// testnet addresses. This function verifies that the provided address corresponds
+    /// to the signet format.
+    ///
+    /// # Returns
+    /// - `true` if the Segwit address is valid on signet (with the "tb" prefix).
+    /// - `false` otherwise.
+    pub fn isValidOnSignet(self: *const Self) bool {
+        return self.eql(&TB);
+    }
+
+    /// Checks whether a given Segwit address is valid on the Bitcoin regtest network.
+    ///
+    /// Segwit addresses on the regtest network use the human-readable part "bcrt".
+    /// This function verifies that the provided address corresponds to the regtest
+    /// format.
+    ///
+    /// # Returns
+    /// - `true` if the Segwit address is valid on regtest (with the "bcrt" prefix).
+    /// - `false` otherwise.
+    pub fn isValidOnRegtest(self: *const Self) bool {
+        return self.eql(&BCRT);
+    }
 };
 
 test "Hrp: check parse is ok" {
@@ -209,4 +368,92 @@ test "Hrp: Hrp with invalid ASCII byte should fail parsing" {
     const case = "has spaces in it";
     // Attempt to parse the HRP with invalid characters, expecting an `InvalidAsciiByte` error.
     try expectError(HrpError.InvalidAsciiByte, Hrp.parse(case));
+}
+
+test "Hrp: Hrp to lower case" {
+    // Some valid human readable parts.
+    const cases = [_][]const u8{
+        "a",
+        "A",
+        "abcdefg",
+        "ABCDEFG",
+        "abc123def",
+        "ABC123DEF",
+        "!\"#$%&'()*+,-./",
+        "1234567890",
+    };
+
+    // The expected results for the human readable parts in lowercase.
+    const expected_results = [_][]const u8{
+        "a",
+        "a",
+        "abcdefg",
+        "abcdefg",
+        "abc123def",
+        "abc123def",
+        "!\"#$%&'()*+,-./",
+        "1234567890",
+    };
+
+    // Go through all the test cases.
+    for (cases, expected_results) |case, expected| {
+        // Parse the human readable part.
+        const hrp = try Hrp.parse(case);
+        var buf: [MAX_HRP_LEN]u8 = undefined;
+
+        // Convert the human readable part to lowercase.
+        try expectEqualStrings(expected, hrp.toLowerCase(&buf));
+    }
+}
+
+test "Hrp: as bytes should return the proper bytes" {
+    // Some valid human readable parts.
+    const cases = [_][]const u8{
+        "a",
+        "A",
+        "abcdefg",
+        "ABCDEFG",
+        "abc123def",
+        "ABC123DEF",
+        "!\"#$%&'()*+,-./",
+        "1234567890",
+    };
+
+    // Go through all the test cases.
+    for (cases) |case| {
+        // Parse the human readable part.
+        const hrp = try Hrp.parse(case);
+        // Convert the human readable part to lowercase.
+        try expectEqualSlices(u8, case, hrp.asBytes());
+    }
+}
+
+test "Hrp: ensure eql function works properly" {
+    // Parse two human readable parts which are equal.
+    const lhs1 = try Hrp.parse("!\"#$%&'()*+,-./");
+    const rhs1 = try Hrp.parse("!\"#$%&'()*+,-./");
+    // Assert that the two human readable parts are equal.
+    try expect(lhs1.eql(&rhs1));
+
+    // Generate another human readable part which is different.
+    const rhs2 = try Hrp.parse("!\"#$%&'()*+,-.a");
+    // Assert that the two human readable parts are not equal.
+    try expect(!lhs1.eql(&rhs2));
+
+    // Generate another human readable part with a different size.
+    const rhs3 = try Hrp.parse("!\"#$%&'()*+,-.");
+    // Assert that the two human readable parts are not equal (different size).
+    try expect(!lhs1.eql(&rhs3));
+
+    // Parse two human readable parts which are equal, but with different case.
+    const lhs_case_insensitive = try Hrp.parse("abcdefg");
+    const rhs_case_insensitive = try Hrp.parse("ABCDEFG");
+    // Assert that the two human readable parts are equal.
+    try expect(lhs_case_insensitive.eql(&rhs_case_insensitive));
+}
+
+test "Hrp: ensure constants are properly setup" {
+    try expect(BC.eql(&(try Hrp.parse("bc"))));
+    try expect(TB.eql(&(try Hrp.parse("tb"))));
+    try expect(BCRT.eql(&(try Hrp.parse("bcrt"))));
 }
