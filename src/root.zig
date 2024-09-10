@@ -4,6 +4,7 @@ pub const bips = @import("bips/lib.zig");
 pub const hashes = @import("hashes/lib.zig");
 pub const secp256k1 = @import("secp256k1");
 pub const types = @import("types/lib.zig");
+pub const wif = @import("wif/wif.zig");
 
 test {
     const std = @import("std");
