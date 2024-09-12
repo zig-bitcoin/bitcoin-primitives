@@ -71,4 +71,7 @@ pub fn build(b: *std.Build) void {
 
     const docs_step = b.step("docs", "Generate documentation");
     docs_step.dependOn(&install_docs.step);
+
+    const check_step = b.step("check", "Check step for LSP");
+    check_step.dependOn(&run_lib_unit_tests.step);
 }

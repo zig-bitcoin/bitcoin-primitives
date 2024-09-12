@@ -59,7 +59,7 @@ pub fn encode_to(self: Self, dest: []u8) void {
     switch (native_endian) {
         .little => {},
         .big => {
-            std.mem.reverse([8]u8, small_endian_value);
+            std.mem.reverse(u8, small_endian_value);
         },
     }
 
@@ -68,20 +68,19 @@ pub fn encode_to(self: Self, dest: []u8) void {
         dest[0] = small_endian_value[0];
     } else if (v <= 0xffff) {
         dest[0] = 0xfd;
-        std.mem.copyForwards(u8, dest[1..], small_endian_value[0..2]);
+        @memcpy(dest[1..3], small_endian_value[0..2]);
     } else if (v <= 0xffffffff) {
         dest[0] = 0xfe;
-        std.mem.copyForwards(u8, dest[1..], small_endian_value[0..4]);
+        @memcpy(dest[1..5], small_endian_value[0..4]);
     } else {
         dest[0] = 0xff;
-        std.mem.copyForwards(u8, dest[1..], small_endian_value[0..]);
+        @memcpy(dest[1..9], small_endian_value[0..]);
     }
 }
 
 pub const DecodeSelfError = error{
     EmptyInput,
-    InputTooLong,
-    InvalidInputLengthForPrefix,
+    InputTooShort,
 };
 
 /// Parses an encoded u64 as a CompactSizeUint
@@ -89,33 +88,32 @@ pub const DecodeSelfError = error{
 /// Input length should be between 1 and 9, correctly prefixed.
 pub fn decode(input: []const u8) DecodeSelfError!Self {
     if (input.len == 0) return error.EmptyInput;
-    if (input.len > 9) return error.InputTooLong;
 
-    const start: usize = switch (input[0]) {
+    const num_len: usize = switch (input[0]) {
         0xff => ff: {
-            if (input.len != 9) return error.InvalidInputLengthForPrefix;
-            break :ff 1;
+            if (input.len < 9) return error.InputTooShort;
+            break :ff 8;
         },
         0xfe => fe: {
-            if (input.len != 5) return error.InvalidInputLengthForPrefix;
-            break :fe 1;
+            if (input.len < 5) return error.InputTooShort;
+            break :fe 4;
         },
         0xfd => fd: {
-            if (input.len != 3) return error.InvalidInputLengthForPrefix;
-            break :fd 1;
+            if (input.len < 3) return error.InputTooShort;
+            break :fd 2;
         },
         else => _: {
-            if (input.len != 1) return error.InvalidInputLengthForPrefix;
-            break :_ 0;
+            break :_ 1;
         },
     };
+    const num_start: usize = if (num_len == 1) 0 else 1;
 
     var buffer = [_]u8{0} ** 8;
-    std.mem.copyForwards(u8, &buffer, input[start..]);
+    @memcpy(buffer[0..num_len], input[num_start .. num_start + num_len]);
     switch (native_endian) {
         .little => {},
         .big => {
-            std.mem.reverse([8]u8, buffer);
+            std.mem.reverse(u8, buffer);
         },
     }
     return .{ .inner = @bitCast(buffer) };
@@ -168,24 +166,24 @@ test "ko_decode" {
     var input = [_]u8{0} ** 10;
 
     input[0] = 0xff;
-    try std.testing.expectError(error.InvalidInputLengthForPrefix, Self.decode(input[0..8]));
+    try std.testing.expectError(error.InputTooShort, Self.decode(input[0..8]));
     _ = try Self.decode(input[0..9]);
-    try std.testing.expectError(error.InputTooLong, Self.decode(input[0..10]));
+    _ = try Self.decode(input[0..]);
 
     input[0] = 0xfe;
-    try std.testing.expectError(error.InvalidInputLengthForPrefix, Self.decode(input[0..4]));
+    try std.testing.expectError(error.InputTooShort, Self.decode(input[0..4]));
     _ = try Self.decode(input[0..5]);
-    try std.testing.expectError(error.InvalidInputLengthForPrefix, Self.decode(input[0..6]));
+    _ = try Self.decode(input[0..]);
 
     input[0] = 0xfd;
-    try std.testing.expectError(error.InvalidInputLengthForPrefix, Self.decode(input[0..2]));
+    try std.testing.expectError(error.InputTooShort, Self.decode(input[0..2]));
     _ = try Self.decode(input[0..3]);
-    try std.testing.expectError(error.InvalidInputLengthForPrefix, Self.decode(input[0..4]));
+    _ = try Self.decode(input[0..]);
 
     input[0] = 0xfc;
     try std.testing.expectError(error.EmptyInput, Self.decode(input[0..0]));
     _ = try Self.decode(input[0..1]);
-    try std.testing.expectError(error.InvalidInputLengthForPrefix, Self.decode(input[0..2]));
+    _ = try Self.decode(input[0..]);
 }
 
 test "ko_endode_when_oom" {

@@ -578,7 +578,7 @@ test "schnorr_broken_privkey_ffs" {
 }
 
 test "vector_1" {
-    var secp = try secp256k1.Secp256k1.genNew();
+    var secp = secp256k1.Secp256k1.genNew();
     defer secp.deinit();
 
     var buf: [100]u8 = undefined;
@@ -637,7 +637,7 @@ test "vector_1" {
 }
 
 test "vector_2" {
-    var secp = try secp256k1.Secp256k1.genNew();
+    var secp = secp256k1.Secp256k1.genNew();
     defer secp.deinit();
 
     var buf: [100]u8 = undefined;
@@ -696,7 +696,7 @@ test "vector_2" {
 }
 
 test "vector_3" {
-    var secp = try secp256k1.Secp256k1.genNew();
+    var secp = secp256k1.Secp256k1.genNew();
     defer secp.deinit();
 
     var buf: [100]u8 = undefined;
