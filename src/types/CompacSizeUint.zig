@@ -157,8 +157,8 @@ pub fn decodeReader(r: anytype) !Self {
 
 test "ok_full_flow_for_key_values" {
     const values = [_]u64{ 0, 252, 0xffff, 0xffffffff, std.math.maxInt(u64) };
-    const zeroed_buffer = [9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-    var buffer = [9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    const zeroed_buffer = [_]u8{0} ** 9;
+    var buffer = [_]u8{0} ** 9;
     const allocator = std.testing.allocator;
 
     for (values) |num| {
@@ -194,8 +194,8 @@ test "ok_full_flow_for_key_values" {
 
 test "ok_full_flow_for_1k_random_values" {
     const rand = std.crypto.random;
-    const zeroed_buffer = [9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-    var buffer = [9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    const zeroed_buffer = [_]u8{0} ** 9;
+    var buffer = [_]u8{0} ** 9;
     const allocator = std.testing.allocator;
 
     for (0..1000) |_| {
