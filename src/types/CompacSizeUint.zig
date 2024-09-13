@@ -11,6 +11,7 @@
 const Self = @This();
 
 const std = @import("std");
+const io = std.io;
 const native_endian = @import("builtin").target.cpu.arch.endian();
 
 /// The inner value
@@ -46,47 +47,61 @@ pub fn encode(self: Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!
     const encoded_len = self.hint_encoded_len();
     const res = try allocator.alloc(u8, encoded_len);
 
-    self.encode_to(res);
+    self.encodeToSlice(res);
 
     return res;
 }
 
-/// Encodes the inner value into a destination
+/// Encodes the inner value into a slice
 ///
 /// dest.len must be >= self.hint_encoded_len().
-pub fn encode_to(self: Self, dest: []u8) void {
-    const small_endian_value: [8]u8 = @bitCast(self.value());
-    switch (native_endian) {
-        .little => {},
-        .big => {
-            std.mem.reverse(u8, small_endian_value);
-        },
-    }
-
+pub fn encodeToSlice(self: Self, dest: []u8) void {
     const v = self.value();
+
     if (v <= 252) {
-        dest[0] = small_endian_value[0];
+        std.mem.writeInt(u8, dest[0..1], @intCast(v), .little);
     } else if (v <= 0xffff) {
         dest[0] = 0xfd;
-        @memcpy(dest[1..3], small_endian_value[0..2]);
+        std.mem.writeInt(u16, dest[1..3], @intCast(v), .little);
     } else if (v <= 0xffffffff) {
         dest[0] = 0xfe;
-        @memcpy(dest[1..5], small_endian_value[0..4]);
+        std.mem.writeInt(u32, dest[1..5], @intCast(v), .little);
     } else {
         dest[0] = 0xff;
-        @memcpy(dest[1..9], small_endian_value[0..]);
+        std.mem.writeInt(u64, dest[1..9], @intCast(v), .little);
     }
 }
 
-pub const DecodeSelfError = error{
+/// Encodes the inner value into the writer
+pub fn encodeToWriter(self: Self, w: anytype) !void {
+    comptime {
+        if (!std.meta.hasFn(@TypeOf(w), "writeByte")) @compileError("Expects w to have fn 'writeByte'.");
+        if (!std.meta.hasFn(@TypeOf(w), "writeInt")) @compileError("Expects w to have fn 'writeInt'.");
+    }
+
+    const val = self.value();
+
+    if (val <= 252) {
+        try w.writeInt(u8, @intCast(val), .little);
+    } else if (val <= 0xffff) {
+        try w.writeByte(0xfd);
+        try w.writeInt(u16, @intCast(val), .little);
+    } else if (val <= 0xffffffff) {
+        try w.writeByte(0xfe);
+        try w.writeInt(u32, @intCast(val), .little);
+    } else {
+        try w.writeByte(0xff);
+        try w.writeInt(u64, @intCast(val), .little);
+    }
+}
+
+pub const DecodeCompactSizeUintError = error{
     EmptyInput,
     InputTooShort,
 };
 
 /// Parses an encoded u64 as a CompactSizeUint
-///
-/// Input length should be between 1 and 9, correctly prefixed.
-pub fn decode(input: []const u8) DecodeSelfError!Self {
+pub fn decodeSlice(input: []const u8) DecodeCompactSizeUintError!Self {
     if (input.len == 0) return error.EmptyInput;
 
     const num_len: usize = switch (input[0]) {
@@ -102,20 +117,39 @@ pub fn decode(input: []const u8) DecodeSelfError!Self {
             if (input.len < 3) return error.InputTooShort;
             break :fd 2;
         },
-        else => _: {
-            break :_ 1;
-        },
+        else => return .{ .inner = input[0] },
     };
-    const num_start: usize = if (num_len == 1) 0 else 1;
 
     var buffer = [_]u8{0} ** 8;
-    @memcpy(buffer[0..num_len], input[num_start .. num_start + num_len]);
-    switch (native_endian) {
-        .little => {},
-        .big => {
-            std.mem.reverse(u8, buffer);
-        },
+    @memcpy(buffer[0..num_len], input[1 .. num_len + 1]);
+    if (native_endian == .big) {
+        @byteSwap(buffer);
     }
+
+    return .{ .inner = @bitCast(buffer) };
+}
+
+/// Parses an encoded u64 as a CompactSizeUint
+pub fn decodeReader(r: anytype) !Self {
+    comptime {
+        if (!std.meta.hasFn(@TypeOf(r), "readByte")) @compileError("Expects r to have fn 'readByte'.");
+        if (!std.meta.hasFn(@TypeOf(r), "readNoEof")) @compileError("Expects r to have fn 'readNoEof'.");
+    }
+
+    const first_byte = try r.readByte();
+    const num_len: usize = switch (first_byte) {
+        0xff => 8,
+        0xfe => 4,
+        0xfd => 2,
+        else => return .{ .inner = @intCast(first_byte) },
+    };
+
+    var buffer = std.mem.zeroes([8]u8);
+    try r.readNoEof(buffer[0..num_len]);
+    if (native_endian == .big) {
+        @byteSwap(buffer);
+    }
+
     return .{ .inner = @bitCast(buffer) };
 }
 
@@ -123,24 +157,48 @@ pub fn decode(input: []const u8) DecodeSelfError!Self {
 
 test "ok_full_flow_for_key_values" {
     const values = [_]u64{ 0, 252, 0xffff, 0xffffffff, std.math.maxInt(u64) };
+    const zeroed_buffer = [9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    var buffer = [9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    const allocator = std.testing.allocator;
 
     for (values) |num| {
-        const allocator = std.testing.allocator;
-
         const compact = Self.new(num);
-        const encoding = try compact.encode(allocator);
-        defer allocator.free(encoding);
-        const decoded = try Self.decode(encoding);
-        try std.testing.expectEqual(decoded.value(), num);
+        // encode
+        {
+            const encoding = try compact.encode(allocator);
+            defer allocator.free(encoding);
+            const decoded = try Self.decodeSlice(encoding);
+            try std.testing.expectEqual(decoded.value(), num);
+        }
+        // encode_to_slice
+        {
+            @memcpy(buffer[0..], zeroed_buffer[0..]);
+            const buf = buffer[9 - compact.hint_encoded_len() ..];
+            compact.encodeToSlice(buf);
+            const decoded = try Self.decodeSlice(buf);
+            try std.testing.expectEqual(decoded.value(), num);
+        }
+        // encode_to_writer
+        {
+            @memcpy(buffer[0..], zeroed_buffer[0..]);
+            var fbs = std.io.fixedBufferStream(&buffer);
+            const writer = fbs.writer();
+            const reader = fbs.reader();
+            try compact.encodeToWriter(writer);
+            fbs.reset();
+            const decoded = try Self.decodeReader(reader);
+            try std.testing.expectEqual(decoded.value(), num);
+        }
     }
 }
 
 test "ok_full_flow_for_1k_random_values" {
     const rand = std.crypto.random;
-    var buffer = [_]u8{0} ** 9;
+    const zeroed_buffer = [9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    var buffer = [9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    const allocator = std.testing.allocator;
 
     for (0..1000) |_| {
-        const allocator = std.testing.allocator;
         const num = rand.int(u64);
 
         const compact = Self.new(num);
@@ -149,41 +207,53 @@ test "ok_full_flow_for_1k_random_values" {
         {
             const encoding = try compact.encode(allocator);
             defer allocator.free(encoding);
-            const decoded = try Self.decode(encoding);
+            const decoded = try Self.decodeSlice(encoding);
             try std.testing.expectEqual(decoded.value(), num);
         }
-        // encode_to
+        // encode_to_slice
         {
+            @memcpy(buffer[0..], zeroed_buffer[0..]);
             const buf = buffer[9 - compact.hint_encoded_len() ..];
-            compact.encode_to(buf);
-            const decoded = try Self.decode(buf);
+            compact.encodeToSlice(buf);
+            const decoded = try Self.decodeSlice(buf);
+            try std.testing.expectEqual(decoded.value(), num);
+        }
+        // encode_to_writer
+        {
+            @memcpy(buffer[0..], zeroed_buffer[0..]);
+            var fbs = std.io.fixedBufferStream(&buffer);
+            const writer = fbs.writer();
+            const reader = fbs.reader();
+            try compact.encodeToWriter(writer);
+            fbs.reset();
+            const decoded = try Self.decodeReader(reader);
             try std.testing.expectEqual(decoded.value(), num);
         }
     }
 }
 
-test "ko_decode" {
+test "ko_decode_slice" {
     var input = [_]u8{0} ** 10;
 
     input[0] = 0xff;
-    try std.testing.expectError(error.InputTooShort, Self.decode(input[0..8]));
-    _ = try Self.decode(input[0..9]);
-    _ = try Self.decode(input[0..]);
+    try std.testing.expectError(error.InputTooShort, Self.decodeSlice(input[0..8]));
+    _ = try Self.decodeSlice(input[0..9]);
+    _ = try Self.decodeSlice(input[0..]);
 
     input[0] = 0xfe;
-    try std.testing.expectError(error.InputTooShort, Self.decode(input[0..4]));
-    _ = try Self.decode(input[0..5]);
-    _ = try Self.decode(input[0..]);
+    try std.testing.expectError(error.InputTooShort, Self.decodeSlice(input[0..4]));
+    _ = try Self.decodeSlice(input[0..5]);
+    _ = try Self.decodeSlice(input[0..]);
 
     input[0] = 0xfd;
-    try std.testing.expectError(error.InputTooShort, Self.decode(input[0..2]));
-    _ = try Self.decode(input[0..3]);
-    _ = try Self.decode(input[0..]);
+    try std.testing.expectError(error.InputTooShort, Self.decodeSlice(input[0..2]));
+    _ = try Self.decodeSlice(input[0..3]);
+    _ = try Self.decodeSlice(input[0..]);
 
     input[0] = 0xfc;
-    try std.testing.expectError(error.EmptyInput, Self.decode(input[0..0]));
-    _ = try Self.decode(input[0..1]);
-    _ = try Self.decode(input[0..]);
+    try std.testing.expectError(error.EmptyInput, Self.decodeSlice(input[0..0]));
+    _ = try Self.decodeSlice(input[0..1]);
+    _ = try Self.decodeSlice(input[0..]);
 }
 
 test "ko_endode_when_oom" {
