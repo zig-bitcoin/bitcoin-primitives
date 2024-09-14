@@ -158,19 +158,21 @@ fn splitAndDecode(allocator: std.mem.Allocator, s: []const u8) Error!struct { st
     } else return Error.MissingSeparator;
 
     var case = try checkHrp(raw_hrp);
-    var buf = try std.ArrayList(u8).initCapacity(allocator, 100);
-    errdefer buf.deinit();
 
-    const hrp_lower = switch (case) {
-        .upper => std.ascii.lowerString(buf.items, raw_hrp),
-        // already lowercase
-        .lower, .none => v: {
-            try buf.appendSlice(raw_hrp);
-            break :v buf.items;
+    var hrp_lower = std.ArrayList(u8).init(allocator);
+    errdefer hrp_lower.deinit();
+
+    switch (case) {
+        .upper => {
+            try hrp_lower.ensureTotalCapacity(raw_hrp.len);
+            hrp_lower.items.len = raw_hrp.len;
+            _ = std.ascii.lowerString(hrp_lower.items, raw_hrp);
         },
-    };
-
-    buf.items.len = hrp_lower.len;
+        // already lowercase
+        .lower, .none => {
+            try hrp_lower.appendSlice(raw_hrp);
+        },
+    }
 
     var data = std.ArrayList(u5).init(allocator);
     errdefer data.deinit();
@@ -199,12 +201,12 @@ fn splitAndDecode(allocator: std.mem.Allocator, s: []const u8) Error!struct { st
         // c should be <128 since it is in the ASCII range, CHARSET_REV.len() == 128
         const num_value = CHARSET_REV[c];
 
-        if (!(0 >= num_value or num_value <= 31)) return Error.InvalidChar;
+        if (!(0 <= num_value and num_value <= 31)) return Error.InvalidChar;
 
         try data.append(@intCast(num_value));
     }
 
-    return .{ buf, data };
+    return .{ hrp_lower, data };
 }
 
 const CHECKSUM_LENGTH: usize = 6;
