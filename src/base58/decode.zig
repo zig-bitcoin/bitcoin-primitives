@@ -42,9 +42,7 @@ pub const Decoder = struct {
                 return error.InvalidCharacter;
             }
 
-            var x: usize = 0;
-            while (x < index) : (x += 1) {
-                const byte = &dest[x];
+            for (dest[0..index]) |*byte| {
                 val += @as(usize, @intCast(byte.*)) * 58;
                 byte.* = @intCast(val & 0xFF);
                 val >>= 8;

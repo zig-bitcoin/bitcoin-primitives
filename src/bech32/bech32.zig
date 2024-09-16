@@ -153,42 +153,51 @@ pub const Variant = enum {
 fn splitAndDecode(allocator: std.mem.Allocator, s: []const u8) Error!struct { std.ArrayList(u8), std.ArrayList(u5) } {
     // Split at separator and check for two pieces
 
-    const raw_hrp, const raw_data = if (std.mem.indexOfScalar(u8, s, SEP)) |sep| .{
+    const raw_hrp, const raw_data = if (std.mem.lastIndexOfScalar(u8, s, SEP)) |sep| .{
         s[0..sep], s[sep + 1 ..],
     } else return Error.MissingSeparator;
 
     var case = try checkHrp(raw_hrp);
-    var buf = try std.ArrayList(u8).initCapacity(allocator, 100);
-    errdefer buf.deinit();
 
-    const hrp_lower = switch (case) {
-        .upper => std.ascii.lowerString(buf.items, raw_hrp),
-        // already lowercase
-        .lower, .none => v: {
-            try buf.appendSlice(raw_hrp);
-            break :v buf.items;
+    var hrp_lower = std.ArrayList(u8).init(allocator);
+    errdefer hrp_lower.deinit();
+
+    switch (case) {
+        .upper => {
+            try hrp_lower.ensureTotalCapacity(raw_hrp.len);
+            hrp_lower.items.len = raw_hrp.len;
+            _ = std.ascii.lowerString(hrp_lower.items, raw_hrp);
         },
-    };
-
-    buf.items.len = hrp_lower.len;
+        // already lowercase
+        .lower, .none => {
+            try hrp_lower.appendSlice(raw_hrp);
+        },
+    }
 
     var data = std.ArrayList(u5).init(allocator);
     errdefer data.deinit();
 
+    var it = std.unicode.Utf8View.initUnchecked(raw_data).iterator();
     // Check data payload
-    for (raw_data) |c| {
+    while (it.nextCodepoint()) |c| {
         // Only check if c is in the ASCII range, all invalid ASCII
         // characters have the value -1 in CHARSET_REV (which covers
         // the whole ASCII range) and will be filtered out later.
-        if (!std.ascii.isAscii(c)) return error.InvalidChar;
+        if (c >= 128) return error.InvalidChar;
 
-        if (std.ascii.isLower(c)) {
+        if (switch (c) {
+            'a'...'z' => true,
+            else => false,
+        }) {
             switch (case) {
                 .upper => return Error.MixedCase,
                 .none => case = .lower,
                 .lower => {},
             }
-        } else if (std.ascii.isUpper(c)) {
+        } else if (switch (c) {
+            'A'...'Z' => true,
+            else => false,
+        }) {
             switch (case) {
                 .lower => return Error.MixedCase,
                 .none => case = .upper,
@@ -199,12 +208,12 @@ fn splitAndDecode(allocator: std.mem.Allocator, s: []const u8) Error!struct { st
         // c should be <128 since it is in the ASCII range, CHARSET_REV.len() == 128
         const num_value = CHARSET_REV[c];
 
-        if (!(0 >= num_value or num_value <= 31)) return Error.InvalidChar;
+        if (!(0 <= num_value and num_value <= 31)) return Error.InvalidChar;
 
         try data.append(@intCast(num_value));
     }
 
-    return .{ buf, data };
+    return .{ hrp_lower, data };
 }
 
 const CHECKSUM_LENGTH: usize = 6;
@@ -527,6 +536,15 @@ test "roundtrip_without_checksum" {
     try std.testing.expectEqualSlices(u8, hrp, decoded_hrp.items);
 
     try std.testing.expectEqualSlices(u5, data.items, decoded_data.items);
+}
+
+test "decode ln" {
+    const str = "lnbc10n1pnw2hkzdqqpp5ve584t0cv27hwmy0cx9ca8uwyqyfw9y9dm3r8vus9fv36r2l9yjssp59g4z52329g4z52329g4z52329g4z52329g4z52329g4z52329g4qcqzysc39n3w6zq50y3775yc66mmvt2fe5aa9mzzdnvq5palgyw6j9uu04qnm0g4ftm5ehtm5aulwtuy0hfrtqcdaxcl2r7wz2x4503levlacqswkkem";
+
+    const h, const d, const v = try decode(std.testing.allocator, str);
+    _ = v; // autofix
+    defer h.deinit();
+    defer d.deinit();
 }
 
 test "test_hrp_case_decode" {
