@@ -8,12 +8,11 @@ pub const Hash160 = struct {
     pub const digest_length = 20;
     pub const Options = struct {};
 
-    pub fn init(options: Options) Self {
-        _ = options;
+    pub fn init(_: Options) Self {
         return .{};
     }
 
-    pub fn hash(b: []const u8, out: *[digest_length]u8, options: Options) void {
+    pub fn hash(b: []const u8, out: *[digest_length]u8, _: Options) void {
         var sha_out: [32]u8 = undefined;
         var ripemd_out: [digest_length]u8 = undefined;
 
