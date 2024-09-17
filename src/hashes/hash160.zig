@@ -10,7 +10,7 @@ pub const Hash160 = struct {
 
     pub fn init(options: Options) Self {
         _ = options;
-        return Self{};
+        return .{};
     }
 
     pub fn hash(b: []const u8, out: *[digest_length]u8, options: Options) void {
