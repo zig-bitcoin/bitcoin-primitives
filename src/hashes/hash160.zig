@@ -1,6 +1,6 @@
 const std = @import("std");
 const testing = std.testing;
-const sha256 = std.crypto.hash.sha256;
+const Sha256 = std.crypto.hash.sha2.Sha256;
 const Ripemd160 = @import("ripemd160.zig").Ripemd160;
 
 pub const Hash160 = struct {
@@ -12,44 +12,39 @@ pub const Hash160 = struct {
         return .{};
     }
 
-    pub fn hash(b: []const u8, out: *[digest_length]u8, _: Options) void {
-        var sha_out: [32]u8 = undefined;
-        var ripemd_out: [digest_length]u8 = undefined;
+    pub inline fn hash(b: []const u8, out: *[digest_length]u8, _: Options) void {
+        var sha_out: [Sha256.digest_length]u8 = undefined;
 
         // Step 1: Compute SHA256 hash
-        var sha = sha256.init();
-        sha.update(b);
-        sha.final(&sha_out);
+        Sha256.hash(b, &sha_out, .{});
 
         // Step 2: Compute RIPEMD160 of the SHA256 result
-        Ripemd160.hash(&sha_out, &ripemd_out, .{});
-
-        // Copy the RIPEMD160 result to the output
-        @memcpy(out, &ripemd_out);
+        Ripemd160.hash(&sha_out, out, .{});
     }
 };
 
 // Testing Hash160 against known vectors
 test "hash160 vectors" {
-    const input = [_][]const u8{
-        "abc",
-        "bitcoin",
-        "lorem ipsum",
-        "we do a lil hashing",
+    const test_cases = [_]struct {
+        input: []const u8,
+        expected: []const u8,
+    }{
+        .{ .input = "hello", .expected = "b6a9c8c230722b7c748331a8b450f05566dc7d0f" },
+        .{ .input = "blockchain", .expected = "755f6f4af6e11c5cf642f0ed6ecda89d8619cee7" },
+        .{ .input = "abc", .expected = "bb1be98c142444d7a56aa3981c3942a978e4dc33" },
+        .{ .input = "bitcoin", .expected = "6b2904910f9b40b2244eed93a7b8d992b22f8d32" },
     };
 
-    const output = [_][]const u8{
-        "8eb208f7e05d987a9b044a8e98c6b087f15a0bfc",
-        "5891bf40b0b0e8e19f524bdc2e842d012264624b",
-        "b3a8cd8a27c90af79b3c81754f267780f443dfef",
-        "8fb8d7be38d54b1580299632f957dfeba9eb55f3",
-    };
-
-    for (0..input.len) |i| {
+    for (test_cases) |case| {
+        errdefer {
+            std.log.err("test case failed, case = {s}", .{std.json.fmt(case, .{})});
+        }
         var expected_output: [Hash160.digest_length]u8 = undefined;
-        _ = try std.fmt.hexToBytes(&expected_output, output[i]);
+        _ = try std.fmt.hexToBytes(&expected_output, case.expected);
+
         var actual_output: [Hash160.digest_length]u8 = undefined;
-        Hash160.hash(input[i], &actual_output, .{});
+
+        Hash160.hash(case.input, &actual_output, .{});
         try testing.expectEqualSlices(u8, &expected_output, &actual_output);
     }
 }
