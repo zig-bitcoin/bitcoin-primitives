@@ -21,15 +21,15 @@ pub const Sha256d = struct {
         return self.sha256_engine.total_len;
     }
 
-    pub fn final(self: *Self) []u8 {
+    pub fn final(self: *Self) [32]u8 {
         var sha1_result: [32]u8 = undefined;
         self.sha256_engine.final(&sha1_result);
 
-        var sha2_result: [32]u8 = undefined;
-        var second_sha256 = Hash.hash(sha1_result[0..]);
-        std.mem.copy(u8, sha2_result[0..], second_sha256[0..]);
+        var sha2_engine = Hash.init();
+        sha2_engine.update(&sha1_result);
+        sha2_engine.final(&sha1_result);
 
-        return sha2_result[0..];
+        return sha1_result;
     }
 };
 
