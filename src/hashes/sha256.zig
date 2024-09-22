@@ -34,43 +34,35 @@ const Midstate = struct {
         return blocks;
     }
 
-    // Creates midstate for tagged hashes.
-    //
-    // Computes non-finalized hash of `sha256(tag) || sha256(tag)` for use in [`sha256t`]. It's
-    // provided for use with [`sha256t`].
-    // pub fn hash_tag(tag: []const u8) Midstate {
-    //     var h = Hash.init(.{});
-    //     h.update(tag);
-    //     const hash = h.finalResult();
+    /// Creates midstate for tagged hashes.
+    ///
+    /// Computes non-finalized hash of `sha256(tag) || sha256(tag)` for use in [`sha256t`]. It's
+    /// provided for use with [`sha256t`].
+    pub fn hash_tag(tag: []const u8) Midstate {
+        var h = Hash.init(.{});
+        h.update(tag);
+        const hash = h.finalResult();
 
-    //     var buf: [64]u8 = undefined;
-    //     for (&buf, 0..) |*buf_elem, idx| {
-    //         buf_elem.* = hash[idx % 32];
-    //     }
+        var buf: [64]u8 = undefined;
+        for (&buf, 0..) |*buf_elem, idx| {
+            buf_elem.* = hash[idx % 32];
+        }
 
-    //     var h2 = Hash.init(.{});
-    //     h2.update(&buf);
+        var h2 = Hash.init(.{});
+        h2.update(&buf);
 
-    //     return Midstate{ .data = toBytes(h2.s), .length = 64 };
-    // }
+        var blocks: [32]u8 = undefined;
+        for (h2.s, 0..) |word, idx| {
+            const idx4 = idx * 4;
+            blocks[idx4] = @truncate(word >> 24);
+            blocks[idx4 + 1] = @truncate(word >> 16);
+            blocks[idx4 + 2] = @truncate(word >> 8);
+            blocks[idx4 + 3] = @truncate(word);
+        }
+
+        return Midstate{ .data = blocks, .length = h2.total_len };
+    }
 };
-
-// pub fn toBytes(blocks: [8]u32) [32]u8 {
-//     var data: [32]u8 = undefined;
-//     var idx: usize = 0;
-//     var idxBuff: usize = 0;
-//     while (idx < 8) : (idx += 1) {
-//         const word = blocks[idx];
-
-//         std.mem.readInt(u16, &[_]u8{ 0x12, 0x34 });
-//         data[idxBuff] = @truncate(u8, word >> 24);
-//         data[idxBuff + 1] = @truncate(u8, word >> 16);
-//         data[idxBuff + 2] = @truncate(u8, word >> 8);
-//         data[idxBuff + 3] = @truncate(u8, word);
-//         idxBuff += 4;
-//     }
-//     return data;
-// }
 
 const BLOCK_SIZE: usize = 64;
 
@@ -128,17 +120,18 @@ test "Convert [32]u8 to [8]u32" {
     try std.testing.expectEqualSlices(u32, &expected, &result);
 }
 
-// test "const midstate" {
-//     const expectedMidstate = Midstate{
-//         .data = [32]u8{
-//             156, 224, 228, 230, 124, 17, 108, 57,  56, 179, 202, 242, 195, 15,  80, 137, 211, 243,
-//             147, 108, 71,  99,  110, 96, 125, 179, 62, 234, 221, 198, 240, 201,
-//         },
-//         .length = 64,
-//     };
+test "const midstate" {
+    const expectedMidstate = Midstate{
+        .data = [32]u8{
+            156, 224, 228, 230, 124, 17, 108, 57,  56, 179, 202, 242, 195, 15,  80, 137, 211, 243,
+            147, 108, 71,  99,  110, 96, 125, 179, 62, 234, 221, 198, 240, 201,
+        },
+        .length = 64,
+    };
 
-//     const midstate = Midstate.hash_tag("TapLeaf");
-//     try std.testing.expectEqualSlices(u8, &expectedMidstate.data, &midstate.data);
+    const midstate = Midstate.hash_tag("TapLeaf");
 
-//     try std.testing.expectEqual(expectedMidstate.length, midstate.length);
-// }
+    try std.testing.expectEqualSlices(u8, &expectedMidstate.data, &midstate.data);
+
+    try std.testing.expectEqual(expectedMidstate.length, midstate.length);
+}
