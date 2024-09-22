@@ -96,6 +96,25 @@ const HashEngine = struct {
             .length = midstate.length,
         };
     }
+
+    // TODO: need `input` compatible in rust implementation
+    // pub fn update(self: *HashEngine, data: []const u8) void {
+    //     var sha = Hash.init(.{});
+    //     sha.update(data);
+    //     self.h = sha.s;
+    // }
+
+    pub fn getMidstate(self: *HashEngine) Midstate {
+        var midstate_bytes: [32]u8 = undefined;
+        for (self.h, 0..) |word, idx| {
+            const idx4 = idx * 4;
+            midstate_bytes[idx4] = @truncate(word >> 24);
+            midstate_bytes[idx4 + 1] = @truncate(word >> 16);
+            midstate_bytes[idx4 + 2] = @truncate(word >> 8);
+            midstate_bytes[idx4 + 3] = @truncate(word);
+        }
+        return Midstate{ .data = midstate_bytes, .length = self.length };
+    }
 };
 
 test "Convert [32]u8 to [8]u32" {
@@ -135,3 +154,40 @@ test "const midstate" {
 
     try std.testing.expectEqual(expectedMidstate.length, midstate.length);
 }
+
+// TODO make it work
+// test "midstate" {
+//     // Test vector obtained by doing an asset issuance on Elements
+//     var engine = HashEngine.new();
+//     // sha256dhash of outpoint
+//     // 73828cbc65fd68ab78dc86992b76ae50ae2bf8ceedbe8de0483172f0886219f7:0
+//     const input1: [32]u8 = [32]u8{
+//         0x9d, 0xd0, 0x1b, 0x56, 0xb1, 0x56, 0x45, 0x14,
+//         0x3e, 0xad, 0x15, 0x8d, 0xec, 0x19, 0xf8, 0xce,
+//         0xa9, 0x0b, 0xd0, 0xa9, 0xb2, 0xf8, 0x1d, 0x21,
+//         0xff, 0xa3, 0xa4, 0xc6, 0x44, 0x81, 0xd4, 0x1c,
+//     };
+//     engine.update(&input1);
+//     // 32 bytes of zeroes representing "new asset"
+//     const input2: [32]u8 = std.mem.zeroes([32]u8);
+//     engine.update(&input2);
+
+//     // RPC output
+//     const WANT = Midstate{
+//         .data = [32]u8{
+//             0x0b, 0xcf, 0xe0, 0xe5, 0x4e, 0x6c, 0xc7, 0xd3,
+//             0x4f, 0x4f, 0x7c, 0x1d, 0xf0, 0xb0, 0xf5, 0x03,
+//             0xf2, 0xf7, 0x12, 0x91, 0x2a, 0x06, 0x05, 0xb4,
+//             0x14, 0xed, 0x33, 0x7f, 0x7f, 0x03, 0x2e, 0x03,
+//         },
+//         .length = 64,
+//     };
+
+//     // get midstate
+//     const computed_midstate = engine.getMidstate();
+
+//     try std.testing.expectEqualSlices(u8, &WANT.data, &computed_midstate.data);
+//     try std.testing.expectEqual(WANT.length, computed_midstate.length);
+
+//     std.debug.print("Test passed: Midstate matches expected value.\n", .{});
+// }
