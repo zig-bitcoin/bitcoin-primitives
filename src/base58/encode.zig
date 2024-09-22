@@ -98,6 +98,62 @@ pub const Encoder = struct {
         return dest;
     }
 
+    /// Encodes data using the encoder and appends a 4-byte checksum for integrity checking.
+    ///
+    /// This function computes the SHA-256 hash of the input data twice, extracts the first 4 bytes
+    /// as the checksum, appends it to the data, and then encodes the concatenated result using
+    /// the provided encoder. The checksum ensures data integrity when decoding.
+    ///
+    /// # Parameters
+    ///
+    /// - `encoder`: A pointer to the encoder that provides the `encode` method for Base58 or other encoding schemes.
+    /// - `out`: A slice of bytes to store the final encoded output. It should have enough capacity to hold the
+    ///   encoded result of `data` plus the appended checksum.
+    /// - `buf`: A temporary buffer slice used to store the data and checksum before encoding.
+    ///   It must have enough space to hold the original data plus 4 bytes of checksum.
+    /// - `data`: A constant slice of input bytes to be encoded. The SHA-256 checksum is computed based on this data.
+    ///
+    /// # Returns
+    ///
+    /// The function returns the number of bytes written to `out`, which represents the length of the final encoded data.
+    ///
+    /// # Example
+    ///
+    /// ```zig
+    /// var encoder: Encoder = // initialize encoder
+    /// var out: [64]u8 = undefined;
+    /// var buf: [64]u8 = undefined;
+    /// const data: []const u8 = "some data to encode";
+    ///
+    /// const result_len = encoder.encodeCheck(&out, &buf, data);
+    /// std.debug.print("Encoded result: {s}\n", .{out[0..result_len]});
+    /// ```
+    ///
+    /// # Preconditions
+    ///
+    /// - The `out` slice must be large enough to store the encoded result.
+    /// - The `buf` slice must be large enough to store `data.len + 4` bytes.
+    /// - The `encoder` should be properly initialized and should implement an `encode` method.
+    ///
+    /// # Notes
+    ///
+    /// The checksum is calculated as follows:
+    /// 1. Compute the SHA-256 hash of the input data.
+    /// 2. Compute the SHA-256 hash of the first hash.
+    /// 3. Take the first 4 bytes of the second hash and append them to the data.
+    /// 4. Encode the result using the provided `encoder`.
+    pub fn encodeCheck(encoder: *const Encoder, out: []u8, buf: []u8, data: []const u8) usize {
+        var checksum: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+
+        std.crypto.hash.sha2.Sha256.hash(data, &checksum, .{});
+        std.crypto.hash.sha2.Sha256.hash(&checksum, &checksum, .{});
+
+        @memcpy(buf[0..data.len], data);
+        @memcpy(buf[data.len..][0..4], checksum[0..4]);
+
+        return encoder.encode(buf[0 .. data.len + 4], out);
+    }
+
     pub fn encodeCheckAlloc(encoder: *const Encoder, allocator: std.mem.Allocator, data: []const u8) ![]u8 {
         var hasher = std.crypto.hash.sha2.Sha256.init(.{});
         hasher.update(data);
@@ -116,6 +172,18 @@ pub const Encoder = struct {
         return try encoder.encodeAlloc(allocator, encoding_data);
     }
 };
+
+test "encode with check" {
+    const e = Encoder{};
+    const encoded = try e.encodeCheckAlloc(std.testing.allocator, "hello world");
+    defer std.testing.allocator.free(encoded);
+
+    var buf: [200]u8 = undefined;
+
+    const encoded_no_alloc_size = e.encodeCheck(buf[0..], buf[100..], "hello world");
+
+    try std.testing.expectEqualStrings(encoded, buf[0..encoded_no_alloc_size]);
+}
 
 test "Base58Encoder: verify encoding" {
     const encoder: Encoder = .{};
