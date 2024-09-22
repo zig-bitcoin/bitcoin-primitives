@@ -1,59 +1,66 @@
 const std = @import("std");
-const Sha256 = std.crypto.hash.sha2.Sha256;
+const Hash = std.crypto.hash.sha2.Sha256;
 const testing = std.testing;
 
-pub fn Tag(comptime tag_value: []const u8) type {
-    return struct {
-        pub fn engine() Sha256 {
-            var h = Sha256.init(.{});
-            h.update(tag_value);
-            return h;
-        }
-    };
-}
+const Tag = struct {
+    engine: fn () Hash,
+};
 
-pub fn Hash(comptime T: type) type {
-    return struct {
-        bytes: [32]u8,
+pub const Sha256t = struct {
+    const Self = @This();
 
-        const Self = @This();
+    sha256_engine: Hash,
 
-        pub fn init(data: []const u8) Self {
-            var h = T.engine();
-            h.update(data);
-            var out: [32]u8 = undefined;
-            h.final(&out);
-            return Self{ .bytes = out };
-        }
+    pub fn init() Self {
+        return Sha256t{
+            .sha256_engine = Hash.init(.{}),
+        };
+    }
+};
 
-        pub fn toSlice(self: *const Self) []const u8 {
-            return &self.bytes;
-        }
+const TestHashTag = struct {
+    fn engine() Hash {
+        const TEST_MIDSTATE = [32]u8{
+            156, 224, 228, 230, 124, 17,  108, 57, 56,  179, 202, 242, 195, 15, 80, 137, 211, 243, 147,
+            108, 71,  99,  110, 96,  125, 179, 62, 234, 221, 198, 240, 201,
+        };
 
-        pub fn toString(self: *const Self) ![64]u8 {
-            var buf: [64]u8 = undefined;
-            _ = try std.fmt.bufPrint(&buf, "{s}", .{std.fmt.fmtSliceHexLower(&self.bytes)});
-            return buf;
-        }
-    };
-}
+        var sha256_engine = Hash.init(.{});
+        sha256_engine.update(&TEST_MIDSTATE);
+        return sha256_engine;
+    }
+};
 
-pub fn Sha256t(comptime tag: []const u8) type {
-    const TagType = Tag(tag);
-    return Hash(TagType);
-}
+// Define the TestHash struct
+const TestHash = struct {
+    data: [32]u8,
 
-test "TestHash" {
-    var h = Sha256.init(.{});
-    var out: [32]u8 = undefined;
+    // Hash some bytes and create a new TestHash
+    pub fn hash(data: []const u8) TestHash {
+        var sha256_engine = TestHashTag.engine();
+        sha256_engine.update(data);
 
-    h.final(out[0..]);
-    const expected = [_]u8{
-        0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14,
-        0x9a, 0xfb, 0xf4, 0xc8, 0x99, 0x6f, 0xb9, 0x24,
-        0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c,
-        0xa4, 0x95, 0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55,
-    };
+        // Debugging: Print engine state after update
+        std.debug.print("Engine state after update: {x}\n", .{sha256_engine.s});
 
-    try testing.expectEqualSlices(u8, &expected, &out);
+        var out: [32]u8 = undefined;
+        sha256_engine.final(&out);
+
+        // Debugging: Print final hash output
+        std.debug.print("Final hash output: {x}\n", .{out});
+
+        return TestHash{ .data = out };
+    }
+};
+
+// Test function using expectEqualSlices to compare TestHash output to the expected value
+test "manually created sha256t hash type" {
+    var hash = TestHash.hash(&[_]u8{0});
+    try std.testing.expectEqualSlices(u8, &[32]u8{
+        0xed, 0x13, 0x82, 0x03, 0x78, 0x00, 0xc9, 0xdd, 0x93, 0x8d, 0xd8, 0x85, 0x4f, 0x1a, 0x88, 0x63,
+        0xbc, 0xde, 0xb6, 0x70, 0x50, 0x69, 0xb4, 0xb5, 0x6a, 0x66, 0xec, 0x22, 0x51, 0x9d, 0x58, 0x29,
+    }, &hash.data);
+
+    // You can also print success message if needed
+    std.debug.print("Test passed: Hash matches expected value.\n", .{});
 }
